@@ -564,6 +564,7 @@ void moloch_config_load()
     config.autoGenerateId        = moloch_config_boolean(keyfile, "autoGenerateId", FALSE);
     config.enablePacketLen       = moloch_config_boolean(NULL, "enablePacketLen", FALSE);
     config.enablePacketDedup     = moloch_config_boolean(NULL, "enablePacketDedup", FALSE);
+    config.v3Format              = moloch_config_boolean(NULL, "v3Format", FALSE);
 
     config.maxStreams[SESSION_TCP] = MAX(100, maxStreams/config.packetThreads*1.25);
     config.maxStreams[SESSION_UDP] = MAX(100, maxStreams/config.packetThreads/20);

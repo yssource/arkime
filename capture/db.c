@@ -409,6 +409,8 @@ LOCAL struct {
     time_t  lastSave;
     char    prefix[100];
     time_t  prefixTime;
+    short   sortedFieldsIndex[MOLOCH_FIELDS_DB_MAX];
+    short   sortedFieldsIndexCnt;
     MOLOCH_LOCK_EXTERN(lock);
 } dbInfo[MOLOCH_MAX_PACKET_THREADS];
 
@@ -438,6 +440,10 @@ if (HEAD.s_count > 0) { \
 }
 
 
+int moloch_db_field_sort(const void *a, const void *b) {
+    return strcmp(config.fields[*(short *)a]->dbFieldFull, config.fields[*(short *)b]->dbFieldFull);
+}
+
 void moloch_db_save_session(MolochSession_t *session, int final)
 {
     uint32_t               i;
@@ -453,7 +459,6 @@ void moloch_db_save_session(MolochSession_t *session, int final)
     unsigned char         *startPtr;
     unsigned char         *dataPtr;
     uint32_t               jsonSize;
-    int                    pos;
     gpointer               ikey;
     char                   ipsrc[INET6_ADDRSTRLEN];
     char                   ipdst[INET6_ADDRSTRLEN];
@@ -485,7 +490,7 @@ void moloch_db_save_session(MolochSession_t *session, int final)
         jsonSize += 10*session->fileLenArray->len;
     }
 
-    for (pos = 0; pos < session->maxFields; pos++) {
+    for (int pos = 0; pos < session->maxFields; pos++) {
         if (session->fields[pos]) {
             jsonSize += session->fields[pos]->jsonSize;
         }
@@ -496,6 +501,16 @@ void moloch_db_save_session(MolochSession_t *session, int final)
 
     const int thread = session->thread;
 
+    /* Rebuild field order, we keep a sort list of fields per thread */
+    if (session->maxFields > dbInfo[thread].sortedFieldsIndexCnt) {
+        for (int i = 0; i < session->maxFields; i++) {
+            dbInfo[thread].sortedFieldsIndex[i] = i;
+        }
+        qsort(&dbInfo[thread].sortedFieldsIndex, session->maxFields, 2, moloch_db_field_sort);
+        dbInfo[thread].sortedFieldsIndexCnt = session->maxFields;
+    }
+
+    /* figure out ES index name per thread, can change every second */
     if (dbInfo[thread].prefixTime != session->lastPacket.tv_sec) {
         dbInfo[thread].prefixTime = session->lastPacket.tv_sec;
 
@@ -602,13 +617,6 @@ void moloch_db_save_session(MolochSession_t *session, int final)
                       timediff,
                       session->ipProtocol);
 
-    // Currently don't do communityId for ICMP because it requires magic
-    if (session->ses != SESSION_ICMP && session->ses != SESSION_OTHER) {
-        char *communityId = moloch_db_community_id(session);
-        BSB_EXPORT_sprintf(jbsb, "\"communityId\": \"1:%s\",", communityId);
-        g_free(communityId);
-    }
-
     if (session->ipProtocol == IPPROTO_TCP) {
         BSB_EXPORT_sprintf(jbsb,
                            "\"tcpflags\":{"
@@ -665,18 +673,6 @@ void moloch_db_save_session(MolochSession_t *session, int final)
             inet_ntop(AF_INET6, &session->addr1, ipsrc, sizeof(ipsrc));
             inet_ntop(AF_INET6, &session->addr2, ipdst, sizeof(ipdst));
         }
-        BSB_EXPORT_sprintf(jbsb,
-                          "\"timestamp\":%" PRIu64 ","
-                          "\"srcIp\":\"%s\","
-                          "\"dstIp\":\"%s\","
-                          "\"srcPort\":%u,"
-                          "\"dstPort\":%u,",
-                          ((uint64_t)currentTime.tv_sec)*1000 + ((uint64_t)currentTime.tv_usec)/1000,
-                          ipsrc,
-                          ipdst,
-                          session->port1,
-                          session->port2);
-
 
         char *g1, *g2, *asStr1, *asStr2, *rir1, *rir2;
         uint32_t asNum1, asNum2;
@@ -685,22 +681,86 @@ void moloch_db_save_session(MolochSession_t *session, int final)
         moloch_db_geo_lookup6(session, session->addr1, &g1, &asNum1, &asStr1, &asLen1, &rir1);
         moloch_db_geo_lookup6(session, session->addr2, &g2, &asNum2, &asStr2, &asLen2, &rir2);
 
-        if (g1)
-            BSB_EXPORT_sprintf(jbsb, "\"srcGEO\":\"%2.2s\",", g1);
-        if (g2)
-            BSB_EXPORT_sprintf(jbsb, "\"dstGEO\":\"%2.2s\",", g2);
+        if (config.v3Format) {
+            BSB_EXPORT_sprintf(jbsb,
+                              "\"timestamp\":%" PRIu64 ",",
+                              ((uint64_t)currentTime.tv_sec)*1000 + ((uint64_t)currentTime.tv_usec)/1000);
+
+            BSB_EXPORT_sprintf(jbsb,
+                              "\"source\":{\"ip\":\"%s\","
+                              "\"port\":%d,"
+                              "\"bytes\":%" PRIu64 ","
+                              "\"packets\":%u,",
+                              ipsrc,
+                              session->port1,
+                              session->bytes[0],
+                              session->packets[0]);
+
+            if (g1) {
+                BSB_EXPORT_sprintf(jbsb, "\"geo\":{\"country_iso_code\":\"%2.2s\"},", g1);
+            }
+
+            if (asStr1) {
+                BSB_EXPORT_sprintf(jbsb, "\"as\":{\"number\": %u, \"full\":\"AS%u ", asNum1, asNum1);
+                moloch_db_js0n_str_unquoted(&jbsb, (unsigned char*)asStr1, asLen1, TRUE);
+                BSB_EXPORT_cstr(jbsb, "\"},");
+            }
+
+            BSB_EXPORT_rewind(jbsb, 1); // Remove last comma
+            BSB_EXPORT_cstr(jbsb, "},"); // Close source
+
+            BSB_EXPORT_sprintf(jbsb,
+                              "\"destination\":{\"ip\":\"%s\","
+                              "\"port\":%d,"
+                              "\"bytes\":%" PRIu64 ","
+                              "\"packets\":%u,",
+                              ipdst,
+                              session->port2,
+                              session->bytes[1],
+                              session->packets[0]);
+
+            if (g2) {
+                BSB_EXPORT_sprintf(jbsb, "\"geo\":{\"country_iso_code\":\"%2.2s\"},", g2);
+            }
+
+            if (asStr2) {
+                BSB_EXPORT_sprintf(jbsb, "\"as\":{\"number\": %u, \"full\":\"AS%u ", asNum2, asNum2);
+                moloch_db_js0n_str_unquoted(&jbsb, (unsigned char*)asStr2, asLen2, TRUE);
+                BSB_EXPORT_cstr(jbsb, "\"},");
+            }
+
+            BSB_EXPORT_rewind(jbsb, 1); // Remove last comma
+            BSB_EXPORT_cstr(jbsb, "},"); // Close destination
+        } else {
+            BSB_EXPORT_sprintf(jbsb,
+                              "\"timestamp\":%" PRIu64 ","
+                              "\"srcIp\":\"%s\","
+                              "\"dstIp\":\"%s\","
+                              "\"srcPort\":%u,"
+                              "\"dstPort\":%u,",
+                              ((uint64_t)currentTime.tv_sec)*1000 + ((uint64_t)currentTime.tv_usec)/1000,
+                              ipsrc,
+                              ipdst,
+                              session->port1,
+                              session->port2);
+
+            if (g1)
+                BSB_EXPORT_sprintf(jbsb, "\"srcGEO\":\"%2.2s\",", g1);
+            if (g2)
+                BSB_EXPORT_sprintf(jbsb, "\"dstGEO\":\"%2.2s\",", g2);
 
 
-        if (asStr1) {
-            BSB_EXPORT_sprintf(jbsb, "\"srcASN\":\"AS%u ", asNum1);
-            moloch_db_js0n_str_unquoted(&jbsb, (unsigned char*)asStr1, asLen1, TRUE);
-            BSB_EXPORT_cstr(jbsb, "\",");
-        }
+            if (asStr1) {
+                BSB_EXPORT_sprintf(jbsb, "\"srcASN\":\"AS%u ", asNum1);
+                moloch_db_js0n_str_unquoted(&jbsb, (unsigned char*)asStr1, asLen1, TRUE);
+                BSB_EXPORT_cstr(jbsb, "\",");
+            }
 
-        if (asStr2) {
-            BSB_EXPORT_sprintf(jbsb, "\"dstASN\":\"AS%u ", asNum2);
-            moloch_db_js0n_str_unquoted(&jbsb, (unsigned char*)asStr2, asLen2, TRUE);
-            BSB_EXPORT_cstr(jbsb, "\",");
+            if (asStr2) {
+                BSB_EXPORT_sprintf(jbsb, "\"dstASN\":\"AS%u ", asNum2);
+                moloch_db_js0n_str_unquoted(&jbsb, (unsigned char*)asStr2, asLen2, TRUE);
+                BSB_EXPORT_cstr(jbsb, "\",");
+            }
         }
 
         if (rir1)
@@ -710,24 +770,50 @@ void moloch_db_save_session(MolochSession_t *session, int final)
             BSB_EXPORT_sprintf(jbsb, "\"dstRIR\":\"%s\",", rir2);
     }
 
+    if (config.v3Format) {
+        BSB_EXPORT_sprintf(jbsb,
+                          "\"network\":{\"packets\":%u,"
+                          "\"bytes\":%" PRIu64,
+                          session->packets[0] + session->packets[1],
+                          session->bytes[0] + session->bytes[1]);
+
+        // Currently don't do communityId for ICMP because it requires magic
+        if (session->ses != SESSION_ICMP && session->ses != SESSION_OTHER) {
+            char *communityId = moloch_db_community_id(session);
+            BSB_EXPORT_sprintf(jbsb, ",\"community_id\": \"1:%s\"", communityId);
+            g_free(communityId);
+        }
+        BSB_EXPORT_cstr(jbsb, "},");
+    } else {
+        BSB_EXPORT_sprintf(jbsb,
+                          "\"totPackets\":%u,"
+                          "\"totBytes\":%" PRIu64 ","
+                          "\"srcBytes\":%" PRIu64 ","
+                          "\"dstBytes\":%" PRIu64 ","
+                          "\"srcPackets\":%u,"
+                          "\"dstPackets\":%u,",
+                          session->packets[0] + session->packets[1],
+                          session->bytes[0] + session->bytes[1],
+                          session->bytes[0],
+                          session->bytes[1],
+                          session->packets[0],
+                          session->packets[1]
+                          );
+
+        // Currently don't do communityId for ICMP because it requires magic
+        if (session->ses != SESSION_ICMP && session->ses != SESSION_OTHER) {
+            char *communityId = moloch_db_community_id(session);
+            BSB_EXPORT_sprintf(jbsb, "\"communityId\": \"1:%s\",", communityId);
+            g_free(communityId);
+        }
+    }
+
     BSB_EXPORT_sprintf(jbsb,
-                      "\"totPackets\":%u,"
-                      "\"srcPackets\":%u,"
-                      "\"dstPackets\":%u,"
-                      "\"totBytes\":%" PRIu64 ","
-                      "\"srcBytes\":%" PRIu64 ","
-                      "\"dstBytes\":%" PRIu64 ","
                       "\"totDataBytes\":%" PRIu64 ","
                       "\"srcDataBytes\":%" PRIu64 ","
                       "\"dstDataBytes\":%" PRIu64 ","
                       "\"segmentCnt\":%u,"
                       "\"node\":\"%s\",",
-                      session->packets[0] + session->packets[1],
-                      session->packets[0],
-                      session->packets[1],
-                      session->bytes[0] + session->bytes[1],
-                      session->bytes[0],
-                      session->bytes[1],
                       session->databytes[0] + session->databytes[1],
                       session->databytes[0],
                       session->databytes[1],
@@ -794,9 +880,13 @@ void moloch_db_save_session(MolochSession_t *session, int final)
     BSB_EXPORT_cstr(jbsb, "],");
 
     int inGroupNum = 0;
-    for (pos = 0; pos < session->maxFields; pos++) {
+    for (int sortedFieldsIndexPos = 0; sortedFieldsIndexPos < dbInfo[thread].sortedFieldsIndexCnt; sortedFieldsIndexPos++) {
+        const int pos = dbInfo[thread].sortedFieldsIndex[sortedFieldsIndexPos];
+        if (pos >= session->maxFields || !session->fields[pos])
+            continue;
+
         const int flags = config.fields[pos]->flags;
-        if (!session->fields[pos] || flags & MOLOCH_FIELD_FLAG_DISABLED)
+        if (flags & MOLOCH_FIELD_FLAG_DISABLED)
             continue;
 
         const int freeField = final || ((flags & MOLOCH_FIELD_FLAG_LINKED_SESSIONS) == 0);

@@ -202,6 +202,7 @@ typedef struct moloch_field_info {
     struct moloch_field_info *d_next, *d_prev; /* Must be first */
     char                     *dbFieldFull;     /* Must be second - this is the full version example:mysql.user-term */
     char                     *dbField;         /* - this is the version used in db writing example:user-term */
+    char                     *ecsField;
     uint32_t                  d_hash;
     uint32_t                  d_bucket;
     uint32_t                  d_count;
@@ -472,6 +473,7 @@ typedef struct moloch_config {
     char      enablePacketLen;
     char      gapPacketPos;
     char      enablePacketDedup;
+    char      v3Format;
 } MolochConfig_t;
 
 typedef struct {

@@ -709,23 +709,6 @@ sub fieldsCreate
     fieldsUpdate();
 }
 ################################################################################
-# Not the fix I want, but it works for now
-sub fieldsIpDst
-{
-    esPost("/${PREFIX}fields_v3/_doc/ip.dst?timeout=${ESTIMEOUT}s", '{
-      "friendlyName": "Dst IP",
-      "group": "general",
-      "help": "Destination IP",
-      "type": "ip",
-      "dbField": "a2",
-      "dbField2": "dstIp",
-      "portField": "p2",
-      "portField2": "dstPort",
-      "category": "ip",
-      "aliases": ["ip.dst:port"]
-    }');
-}
-################################################################################
 sub fieldsUpdate
 {
     my $mapping = '
@@ -812,7 +795,8 @@ sub fieldsUpdate
       "dbField2": "srcIp",
       "portField": "p1",
       "portField2": "srcPort",
-      "category": "ip"
+      "category": "ip",
+      "ecsField": "source.ip"
     }');
     esPost("/${PREFIX}fields_v3/_doc/port.src?timeout=${ESTIMEOUT}s", '{
       "friendlyName": "Src Port",
@@ -821,7 +805,8 @@ sub fieldsUpdate
       "type": "integer",
       "dbField": "p1",
       "dbField2": "srcPort",
-      "category": "port"
+      "category": "port",
+      "ecsField": "source.port"
     }');
     esPost("/${PREFIX}fields_v3/_doc/asn.src?timeout=${ESTIMEOUT}s", '{
       "friendlyName": "Src ASN",
@@ -851,7 +836,19 @@ sub fieldsUpdate
       "dbField2": "srcRIR",
       "category": "rir"
     }');
-    fieldsIpDst();
+    esPost("/${PREFIX}fields_v3/_doc/ip.dst?timeout=${ESTIMEOUT}s", '{
+      "friendlyName": "Dst IP",
+      "group": "general",
+      "help": "Destination IP",
+      "type": "ip",
+      "dbField": "a2",
+      "dbField2": "dstIp",
+      "portField": "p2",
+      "portField2": "dstPort",
+      "category": "ip",
+      "aliases": ["ip.dst:port"],
+      "ecsField": "destination.ip"
+    }');
     esPost("/${PREFIX}fields_v3/_doc/port.dst?timeout=${ESTIMEOUT}s", '{
       "friendlyName": "Dst Port",
       "group": "general",
@@ -859,7 +856,8 @@ sub fieldsUpdate
       "type": "integer",
       "dbField": "p2",
       "dbField2": "dstPort",
-      "category": "port"
+      "category": "port",
+      "ecsField": "destination.ip"
     }');
     esPost("/${PREFIX}fields_v3/_doc/asn.dst?timeout=${ESTIMEOUT}s", '{
       "friendlyName": "Dst ASN",
@@ -895,7 +893,8 @@ sub fieldsUpdate
       "help": "Total number of raw bytes sent AND received in a session",
       "type": "integer",
       "dbField": "by",
-      "dbField2": "totBytes"
+      "dbField2": "totBytes",
+      "ecsField": "network.bytes"
     }');
     esPost("/${PREFIX}fields_v3/_doc/bytes.src?timeout=${ESTIMEOUT}s", '{
       "friendlyName": "Src Bytes",
@@ -903,7 +902,8 @@ sub fieldsUpdate
       "help": "Total number of raw bytes sent by source in a session",
       "type": "integer",
       "dbField": "by1",
-      "dbField2": "srcBytes"
+      "dbField2": "srcBytes",
+      "ecsField": "source.bytes"
     }');
     esPost("/${PREFIX}fields_v3/_doc/bytes.dst?timeout=${ESTIMEOUT}s", '{
       "friendlyName": "Dst Bytes",
@@ -911,7 +911,8 @@ sub fieldsUpdate
       "help": "Total number of raw bytes sent by destination in a session",
       "type": "integer",
       "dbField": "by2",
-      "dbField2": "dstBytes"
+      "dbField2": "dstBytes",
+      "ecsField": "destination.bytes"
     }');
     esPost("/${PREFIX}fields_v3/_doc/databytes?timeout=${ESTIMEOUT}s", '{
       "friendlyName": "Data bytes",
@@ -943,7 +944,8 @@ sub fieldsUpdate
       "help": "Total number of packets sent AND received in a session",
       "type": "integer",
       "dbField": "pa",
-      "dbField2": "totPackets"
+      "dbField2": "totPackets",
+      "ecsField": "network.packets"
     }');
     esPost("/${PREFIX}fields_v3/_doc/packets.src?timeout=${ESTIMEOUT}s", '{
       "friendlyName": "Src Packets",
@@ -951,7 +953,8 @@ sub fieldsUpdate
       "help": "Total number of packets sent by source in a session",
       "type": "integer",
       "dbField": "pa1",
-      "dbField2": "srcPackets"
+      "dbField2": "srcPackets",
+      "ecsField": "source.packets"
     }');
     esPost("/${PREFIX}fields_v3/_doc/packets.dst?timeout=${ESTIMEOUT}s", '{
       "friendlyName": "Dst Packets",
@@ -959,7 +962,8 @@ sub fieldsUpdate
       "help": "Total number of packets sent by destination in a session",
       "type": "integer",
       "dbField": "pa2",
-      "dbField2": "dstPackets"
+      "dbField2": "dstPackets",
+      "ecsField": "destination.packets"
     }');
     esPost("/${PREFIX}fields_v3/_doc/ip.protocol?timeout=${ESTIMEOUT}s", '{
       "friendlyName": "IP Protocol",

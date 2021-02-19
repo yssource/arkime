@@ -90,6 +90,9 @@ void moloch_field_define_json(unsigned char *expression, int expression_len, uns
         } else if (strncmp("transform", (char*)data + out[i], 8) == 0) {
             g_free(info->transform);
             info->transform = g_strndup((char*)data + out[i+2], out[i+3]);
+        } else if (strncmp("ecsField", (char*)data + out[i], 8) == 0) {
+            g_free(info->ecsField);
+            info->ecsField = g_strndup((char*)data + out[i+2], out[i+3]);
         } else if (strncmp("disabled", (char*)data + out[i], 8) == 0) {
             if (strncmp((char *)data + out[i+2], "true", 4) == 0) {
                 disabled = 1;
@@ -280,6 +283,7 @@ int moloch_field_define(char *group, char *kind, char *expression, char *friendl
 
         char *category = NULL;
         char *transform = NULL;
+        char *ecsField = NULL;
         if (strcmp(kind, minfo->kind) != 0) {
             LOG("WARNING - Field kind in db %s doesn't match field kind %s in capture for field %s", minfo->kind, kind, expression);
         }
@@ -293,6 +297,8 @@ int moloch_field_define(char *group, char *kind, char *expression, char *friendl
                 category = value;
             } else if (strcmp(field, "transform") == 0 && value) {
                 transform = value;
+            } else if (strcmp(field, "ecsField") == 0 && value) {
+                ecsField = value;
             }
         }
         va_end(args);
@@ -301,6 +307,10 @@ int moloch_field_define(char *group, char *kind, char *expression, char *friendl
             moloch_db_update_field(expression, "category", category);
         }
         if (transform && (!minfo->transform || strcmp(transform, minfo->transform) != 0)) {
+            LOG("UPDATING - Field transform in db %s doesn't match field transform %s in capture for field %s", minfo->transform, transform, expression);
+            moloch_db_update_field(expression, "transform", transform);
+        }
+        if (ecsField && (!minfo->ecsField || strcmp(ecsField, minfo->ecsField) != 0)) {
             LOG("UPDATING - Field transform in db %s doesn't match field transform %s in capture for field %s", minfo->transform, transform, expression);
             moloch_db_update_field(expression, "transform", transform);
         }
@@ -358,6 +368,7 @@ int moloch_field_define(char *group, char *kind, char *expression, char *friendl
     }
 
     if (flags & MOLOCH_FIELD_FLAG_FAKE) {
+        g_free(minfo->ecsField);
         g_free(minfo->expression);
         g_free(minfo->dbField);
         g_free(minfo->group);
