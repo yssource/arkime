@@ -73,7 +73,7 @@ export default {
     }
   },
   mounted: function () {
-    this.compatibleBrowser = (typeof Object['__defineSetter__'] === 'function') &&
+    this.compatibleBrowser = (typeof Object.__defineSetter__ === 'function') &&
       !!String.prototype.includes;
 
     if (!this.compatibleBrowser) {
@@ -380,12 +380,13 @@ button[class*=' btn-theme'] {
 /* themed radio/checkbox buttons */
 label.btn-radio,
 button.btn-checkbox,
-div.btn-checkbox > label {
+div.btn-checkbox > label,
+div.btn-group-toggle > label {
   cursor: pointer;
   background-image: none;
   background-color: var(--color-background, white) !important;
   border-color    : var(--color-primary) !important;
-  color           : var(--color-primary);
+  color           : var(--color-primary) !important;
 }
 label.btn-radio.active:hover:not(:disabled),
 button.btn-checkbox.active:hover:not(:disabled),

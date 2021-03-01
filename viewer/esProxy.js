@@ -24,7 +24,6 @@ const http = require('http');
 const https = require('https');
 const fs = require('fs');
 const basicAuth = require('basic-auth');
-const URL = require('url');
 
 // express app
 const app = express();
@@ -157,20 +156,20 @@ function saveBody (req, res, next) {
 
 function doProxy (req, res, cb) {
   let result = '';
-  const url = elasticsearch + req.url;
-  console.log('URL', url);
-  const info = URL.parse(url);
-  info.method = req.method;
+  const esUrl = elasticsearch + req.url;
+  console.log('URL', esUrl);
+  const url = new URL(esUrl);
+  const options = { method: req.method };
   let client;
   if (url.match(/^https:/)) {
-    info.agent = httpsAgent;
+    options.agent = httpsAgent;
     client = https;
   } else {
-    info.agent = httpAgent;
+    options.agent = httpAgent;
     client = http;
   }
 
-  const preq = client.request(info, (pres) => {
+  const preq = client.request(url, options, (pres) => {
     pres.on('data', (chunk) => {
       result += chunk.toString();
     });
@@ -208,7 +207,7 @@ app.get('*', (req, res) => {
 
   // Empty IFs since those are allowed requests and will run code at end
   if (getExact[path]) {
-  } else if (path.startsWith(`/tagger`)) {
+  } else if (path.startsWith('/tagger')) {
   } else if (path.startsWith(`/${prefix}users/_doc/`)) {
   } else if (path === `/${prefix}sequence/_doc/fn-${req.sensor.node}`) {
   } else if (path === `/${prefix}stats/_doc/${req.sensor.node}`) {
@@ -246,12 +245,12 @@ app.post('*', saveBody, (req, res) => {
   // Empty IFs since those are allowed requests and will run code at end
   if (postExact[path]) {
   } else if (path.startsWith(`/${prefix}fields/_doc/`)) {
-  } else if (path.startsWith(`/tagger`)) {
+  } else if (path.startsWith('/tagger')) {
   } else if (path === `/${prefix}sequence/_doc/fn-${req.sensor.node}`) {
   } else if (path === `/${prefix}stats/_doc/${req.sensor.node}`) {
   } else if (path.startsWith(`/${prefix}dstats/_doc/${req.sensor.node}`)) {
   } else if (path.startsWith(`/${prefix}files/_doc/${req.sensor.node}`)) {
-  } else if (path.startsWith(`/_bulk`)) {
+  } else if (path.startsWith('/_bulk')) {
     if (!validateBulk(req)) {
       console.log(`POST failed node: ${req.sensor.node} path:${path}`);
       return res.status(400).send('Not authorized for API');

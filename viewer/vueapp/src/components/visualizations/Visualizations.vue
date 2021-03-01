@@ -210,6 +210,18 @@
               </b-radio>
             </b-form-radio-group>
           </div> <!-- series type -->
+          <!-- cap times -->
+          <div class="btn-group btn-group-xs btn-group-checkboxes ml-1">
+            <b-form-checkbox
+              button
+              size="sm"
+              :active="showCapStartTimes"
+              v-model="showCapStartTimes"
+              @change="toggleCapStartTimes"
+              v-b-tooltip="'Toggle the capture process start time(s)'">
+              {{ showCapStartTimes ? 'Hide' : 'Show' }} Cap Times
+            </b-form-checkbox> <!-- /cap times -->
+          </div>
         </div> <!-- /graph controls -->
 
         <!-- graph -->
@@ -304,7 +316,8 @@ export default {
       graph: undefined,
       graphOptions: {},
       showMap: undefined,
-      stickyViz: false
+      stickyViz: false,
+      showCapStartTimes: true
     };
   },
   computed: {
@@ -379,7 +392,7 @@ export default {
       if (this.primary) {
         changeGraphType(this);
       } else { // wait for the plot to be accessible
-        let id = parseInt(this.id);
+        const id = parseInt(this.id);
         setTimeout(() => { changeGraphType(this); }, id * 100);
       }
     },
@@ -401,7 +414,7 @@ export default {
     },
     '$store.state.showMaps': function (newVal, oldVal) {
       if (this.id !== 'primary') {
-        let id = parseInt(this.id);
+        const id = parseInt(this.id);
         setTimeout(() => { // show/hide maps one at a time
           this.showMap = newVal;
         }, id * 100);
@@ -439,11 +452,14 @@ export default {
 
     basePath = this.$route.path.split('/')[1];
 
-    let showMap = localStorage && localStorage[`${basePath}-open-map`] &&
+    const showMap = localStorage && localStorage[`${basePath}-open-map`] &&
       localStorage[`${basePath}-open-map`] !== 'false';
 
-    let stickyViz = localStorage && localStorage[`${basePath}-sticky-viz`] &&
+    const stickyViz = localStorage && localStorage[`${basePath}-sticky-viz`] &&
       localStorage[`${basePath}-sticky-viz`] !== 'false';
+
+    this.showCapStartTimes = localStorage && localStorage[`${basePath}-cap-times`] &&
+      localStorage[`${basePath}-cap-times`] !== 'false';
 
     this.$store.commit('toggleStickyViz', stickyViz);
 
@@ -461,14 +477,14 @@ export default {
 
       setupMapAndGraph(this);
     } else { // wait for values in store to be accessible
-      let id = parseInt(this.id);
+      const id = parseInt(this.id);
       setTimeout(() => { setupMapAndGraph(this); }, id * 100);
     }
   },
   methods: {
     getDefaultGraphType: function () {
-      let storedFilters = this.$store.state.user.settings.timelineDataFilters;
-      let routeFilter = this.$route.query.graphType;
+      const storedFilters = this.$store.state.user.settings.timelineDataFilters;
+      const routeFilter = this.$route.query.graphType;
 
       // filter is included in route and is enabled in settings
       if (routeFilter && storedFilters.includes(routeFilter.slice(0, -5))) {
@@ -548,6 +564,12 @@ export default {
     plotPanChange: function (value) {
       this.plotPan = value;
     },
+    toggleCapStartTimes () {
+      this.showCapStartTimes = !this.showCapStartTimes;
+      localStorage[`${basePath}-cap-times`] = this.showCapStartTimes;
+      this.setupGraphData();
+      this.plot = $.plot(this.plotArea, this.graph, this.graphOptions);
+    },
     /* helper functions ---------------------------------------------------- */
     debounce: function (func, funcParam, ms) {
       if (timeout) { clearTimeout(timeout); }
@@ -558,9 +580,9 @@ export default {
     },
     /* helper GRAPH functions */
     updateResults: function (graph) {
-      let xAxis = graph.getXAxes();
+      const xAxis = graph.getXAxes();
 
-      let result = {
+      const result = {
         startTime: (xAxis[0].min / 1000).toFixed(),
         stopTime: (xAxis[0].max / 1000).toFixed()
       };
@@ -595,7 +617,7 @@ export default {
 
       // triggered when an area of the graph is selected
       $(this.plotArea).on('plotselected', (event, ranges) => {
-        let result = {
+        const result = {
           startTime: (ranges.xaxis.from / 1000).toFixed(),
           stopTime: (ranges.xaxis.to / 1000).toFixed()
         };
@@ -632,10 +654,11 @@ export default {
               parseInt(item.datapoint[0].toFixed(0)), this.timezone || 'local', false
             );
 
-            let filterName = (this.graphType === 'sessionsHisto') ? 'Sessions'
+            const filterName = (this.graphType === 'sessionsHisto')
+              ? 'Sessions'
               : this.timelineDataFilters.find(i => i.dbField === this.graphType.slice(0, -5)).friendlyName || '';
 
-            let tooltipHTML = `<div id="tooltip" class="graph-tooltip">
+            const tooltipHTML = `<div id="tooltip" class="graph-tooltip">
                                 <strong>${val}</strong> ${type || ''} ${filterName}
                                 out of <strong>${total}</strong> filtered ${filterName}
                                 on ${d}
@@ -656,7 +679,7 @@ export default {
           // still allow a user to see tooltips for data)
           let capNode, capStartTime;
           let isInCapTimeRange = false;
-          for (let cap of this.capStartTimes) {
+          for (const cap of this.capStartTimes) {
             if (cap.startTime) {
               if (pos.x1 >= cap.startTime - hoverBarWidth && pos.x1 < cap.startTime + hoverBarWidth) {
                 capNode = cap.nodeName;
@@ -667,7 +690,7 @@ export default {
             }
           }
           if (isInCapTimeRange) {
-            let tooltipHTML = `<div id="tooltip" class="graph-tooltip">
+            const tooltipHTML = `<div id="tooltip" class="graph-tooltip">
                                 Capture node ${capNode} started at ${this.$options.filters.timezoneDateString(capStartTime, this.timezone || 'local', false)}
                               </div>`;
 
@@ -699,7 +722,7 @@ export default {
         this.graph = [{ data: this.graphData[this.graphType], color: primaryColor }];
       }
 
-      let showBars = this.seriesType === 'bars';
+      const showBars = this.seriesType === 'bars';
 
       for (let i = 0, len = this.graph.length; i < len; ++i) {
         this.graph[i].bars = { show: showBars };
@@ -763,14 +786,16 @@ export default {
         }
       };
 
-      for (let capture of this.capStartTimes) {
-        this.graphOptions.grid.markings.push({
-          color: foregroundColor || '#666',
-          xaxis: {
-            from: capture.startTime,
-            to: capture.startTime
-          }
-        });
+      if (this.showCapStartTimes) {
+        for (const capture of this.capStartTimes) {
+          this.graphOptions.grid.markings.push({
+            color: foregroundColor || '#666',
+            xaxis: {
+              from: capture.startTime,
+              to: capture.startTime
+            }
+          });
+        }
       }
 
       // add business hours to graph if they exist
@@ -783,23 +808,23 @@ export default {
         return;
       }
 
-      let businessDays = this.$constants.MOLOCH_BUSINESS_DAYS.split(',');
-      let startDate = moment(this.graphData.xmin); // the start of the graph
-      let stopDate = moment(this.graphData.xmax); // the end of the graph
+      const businessDays = this.$constants.MOLOCH_BUSINESS_DAYS.split(',');
+      const startDate = moment(this.graphData.xmin); // the start of the graph
+      const stopDate = moment(this.graphData.xmax); // the end of the graph
       let daysInRange = stopDate.diff(startDate, 'days'); // # days in graph
       // don't bother showing business days if we're looking at more than a month of data
       if (daysInRange > 31) { return; }
 
-      let day = stopDate.startOf('day');
-      let color = 'rgba(255, 210, 50, 0.2)';
+      const day = stopDate.startOf('day');
+      const color = 'rgba(255, 210, 50, 0.2)';
       while (daysInRange >= 0) { // iterate through each day starting from the end
-        let dayOfWeek = day.day();
+        const dayOfWeek = day.day();
         // only display business hours on the specified business days
         if (businessDays.indexOf(dayOfWeek.toString()) >= 0) {
           // get the start of the business day
-          let dayStart = day.clone().add(this.$constants.MOLOCH_BUSINESS_DAY_START, 'hours');
+          const dayStart = day.clone().add(this.$constants.MOLOCH_BUSINESS_DAY_START, 'hours');
           // get the end of the business day
-          let dayStop = day.clone().add(this.$constants.MOLOCH_BUSINESS_DAY_END, 'hours');
+          const dayStop = day.clone().add(this.$constants.MOLOCH_BUSINESS_DAY_END, 'hours');
           // add business hours for this day to graph
           this.graphOptions.grid.markings.push({
             color: color,
@@ -842,7 +867,7 @@ export default {
       });
     },
     isOutsideClick: function (e) {
-      let element = $('#vizContainer' + this.id);
+      const element = $('#vizContainer' + this.id);
       if (!$(element).is(e.target) &&
         $(element).has(e.target).length === 0) {
         this.mapExpanded = false;
@@ -870,7 +895,7 @@ export default {
         hoverOpacity: 0.7,
         series: {
           regions: [{
-            scale: [ landColorLight, landColorDark ],
+            scale: [landColorLight, landColorDark],
             normalizeFunction: 'polynomial',
             attribute: 'fill'
           }]
@@ -898,32 +923,32 @@ export default {
 
       if (!Object.keys(this.mapData).length) { return; }
 
-      this.mapData.tot = {};
+      this.localMapData = JSON.parse(JSON.stringify(this.mapData));
+      this.localMapData.tot = {};
       if (this.src) {
-        for (let k in this.mapData.src) {
-          if (!this.mapData.tot[k]) { this.mapData.tot[k] = 0; }
-          this.mapData.tot[k] += this.mapData.src[k];
+        for (const k in this.localMapData.src) {
+          if (!this.localMapData.tot[k]) { this.localMapData.tot[k] = 0; }
+          this.localMapData.tot[k] += this.localMapData.src[k];
         }
       }
       if (this.dst) {
-        for (let k in this.mapData.dst) {
-          if (!this.mapData.tot[k]) { this.mapData.tot[k] = 0; }
-          this.mapData.tot[k] += this.mapData.dst[k];
+        for (const k in this.localMapData.dst) {
+          if (!this.localMapData.tot[k]) { this.localMapData.tot[k] = 0; }
+          this.localMapData.tot[k] += this.localMapData.dst[k];
         }
       }
       if (this.xffGeo) {
-        for (let k in this.mapData.xffGeo) {
-          if (!this.mapData.tot[k]) { this.mapData.tot[k] = 0; }
-          this.mapData.tot[k] += this.mapData.xffGeo[k];
+        for (const k in this.localMapData.xffGeo) {
+          if (!this.localMapData.tot[k]) { this.localMapData.tot[k] = 0; }
+          this.localMapData.tot[k] += this.localMapData.xffGeo[k];
         }
       }
-      this.map.series.regions[0].setValues(this.mapData.tot);
+      this.map.series.regions[0].setValues(this.localMapData.tot);
 
-      let region = this.map.series.regions[0];
+      const region = this.map.series.regions[0];
       this.legend = [];
-      for (var key in region.values) {
-        if (region.values.hasOwnProperty(key) &&
-           region.elements.hasOwnProperty(key)) {
+      for (const key in region.values) {
+        if (region.elements[key]) {
           this.legend.push({
             name: key,
             value: region.values[key],
@@ -1098,6 +1123,20 @@ export default {
   line-height: 1;
   font-size: small;
 }
+
+/* make buttons small and inthe correct position */
+.session-graph-btn-container .btn-group-xs.btn-group-radios {
+  margin-top: -7px;
+}
+.session-graph-btn-container .btn-group-xs.btn-group-checkboxes {
+  margin-top: -9px;
+}
+
+.session-graph-btn-container .btn-group-xs label.btn {
+  padding: 1px 5px;
+  font-size: 12px;
+  line-height: 1.5;
+}
 </style>
 
 <style scoped>
@@ -1207,16 +1246,6 @@ export default {
 }
 .map-visible .session-graph-btn-container > div {
   left: 0;
-}
-
-.session-graph-btn-container .btn-group-xs.btn-group-radios {
-  margin-top: -7px;
-}
-
-.session-graph-btn-container .btn-group-xs label.btn-radio {
-  padding: 1px 5px;
-  font-size: 12px;
-  line-height: 1.5;
 }
 
 /* sticky vizualization styles --------------- */
